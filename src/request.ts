@@ -1,3 +1,4 @@
+import { BodyInit } from "./body";
 import Headers, { HeadersInit } from "./headers";
 
 export type RequestInfo = Request | string;
