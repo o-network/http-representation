@@ -1,0 +1,23 @@
+{
+  "name": "@opennetwork/http-representation",
+  "version": "1.0.4",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --declaration && npm run tslint",
+    "watch": "tsc -w",
+    "tslint": "tslint -c tslint.json -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/es6-shim": "^0.31.39",
+    "es6-shim": "^0.35.5",
+    "tslint": "^5.14.0",
+    "typescript": "^3.3.4000"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/o-network/http-representation.git"
+  }
+}
