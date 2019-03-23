@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@types/es6-shim": "^0.31.39",
+    "@types/node": "^11.11.6",
     "es6-shim": "^0.35.5",
     "tslint": "^5.14.0",
     "typescript": "^3.3.4000"

@@ -1,7 +1,14 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
         "esModuleInterop": true,
+        "module": "commonjs",
+        "lib": [
+            "es2018",
+            "dom"
+        ],
+        "types": [
+            "node"
+        ],
         "target": "es5",
         "noImplicitAny": true,
         "downlevelIteration": true,
