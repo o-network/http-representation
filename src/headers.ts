@@ -123,16 +123,17 @@ const FORBIDDEN_RESPONSE_HEADER_NAMES = [
   "set-cookie2"
 ];
 
-function guard(instance: Headers, fn: (name: string, ...args: any[]) => any, mode: HeadersGuard) {
+function guard(instance: Headers, fnName: string , mode: HeadersGuard) {
+  const fn: (name: string, ...args: any[]) => any = (instance as any)[fnName];
   return function(name: string, ...args: any[]): any {
     if (mode === "immutable") {
-      throw new TypeError("Headers instance is immutable");
+      throw new TypeError(`Failed to execute '${fnName}' on 'Headers': Headers are immutable`);
     }
     if (mode === "request" && FORBIDDEN_REQUEST_HEADER_NAMES.indexOf(name.toLowerCase()) !== -1) {
-      throw new TypeError(`Headers instance is guarded in request mode, ${name} is a forbidden header name`);
+      throw new TypeError(`Failed to execute '${fnName}' on 'Headers': Header ${name} is not allowed in ${mode} guard mode`);
     }
     if (mode === "response" && FORBIDDEN_RESPONSE_HEADER_NAMES.indexOf(name.toLowerCase()) !== -1) {
-      throw new TypeError(`Headers instance is guarded in response mode, ${name} is a forbidden header name`);
+      throw new TypeError(`Failed to execute '${fnName}' on 'Headers': Header ${name} is not allowed in ${mode} guard mode`);
     }
     return fn.call(this, name, ...args);
   };
@@ -142,9 +143,9 @@ class Headers {
 
   static guarded(headers?: HeadersInit, mode: HeadersGuard = "immutable") {
     const instance = new Headers(headers);
-    instance.set = guard(instance, instance.set, mode);
-    instance.append = guard(instance, instance.append, mode);
-    instance.delete = guard(instance, instance.delete, mode);
+    instance.set = guard(instance, "set", mode);
+    instance.append = guard(instance, "append", mode);
+    instance.delete = guard(instance, "delete", mode);
     return instance;
   }
 

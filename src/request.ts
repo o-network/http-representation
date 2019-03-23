@@ -1,4 +1,4 @@
-import { BodyInit } from "./body";
+import Body, { BodyInit } from "./body";
 import Headers, { HeadersInit } from "./headers";
 
 export type RequestInfo = Request | string;
@@ -10,14 +10,14 @@ export type RequestInit = {
   method?: RequestMethod;
 };
 
-class Request {
-
-  public readonly url: string;
+class Request extends Body {
   public readonly method: RequestMethod;
+  public readonly url: string;
   public readonly headers: Headers;
   public readonly body: BodyInit;
 
   constructor(input: RequestInfo, init?: RequestInit) {
+    super((init && init.body) || (input instanceof Request && input.body) || undefined);
     if (typeof input === "string") {
       this.url = input;
     } else {
@@ -31,11 +31,6 @@ class Request {
       headerCandidate = input.headers;
     }
     this.headers = new Headers(headerCandidate);
-    if (init && init.body) {
-      this.body = init.body;
-    } else if (input instanceof Request) {
-      this.body = input.body;
-    }
   }
 }
 
