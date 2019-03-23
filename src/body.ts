@@ -3,4 +3,4 @@ export type Emitter<T> = {
   on(event: "end", callback: (...args: any[]) => void): void;
 };
 
-export type BodyInit = Uint8Array | Emitter<Uint8Array> | string | any;
+export type BodyInit = Uint8Array | Blob | BufferSource | FormData | URLSearchParams | ReadableStream | USVString | string | any;
