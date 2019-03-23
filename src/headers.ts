@@ -11,13 +11,13 @@ const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
 function validateName(name: string) {
-  if (invalidTokenRegex.test(name) || name === "") {
+  if (typeof name !== "string" || invalidTokenRegex.test(name) || name === "") {
     throw new TypeError(`${name} is not a legal HTTP header name`);
   }
 }
 
 function validateValue(value: string) {
-  if (invalidHeaderCharRegex.test(value)) {
+  if (typeof value !== "string" || invalidHeaderCharRegex.test(value)) {
     throw new TypeError(`${value} is not a legal HTTP header value`);
   }
 }
@@ -70,7 +70,13 @@ function addHeadersInstance(instance: Headers, headers: Headers) {
 function isHeadersInstanceLike(value: HeadersInit) {
   return (
     value &&
-    (value.forEach as any) instanceof Function
+    (value.forEach as any) instanceof Function &&
+    (value.has as any) instanceof Function &&
+    (value.get as any) instanceof Function &&
+    (value.set as any) instanceof Function &&
+    (value.entries as any) instanceof Function &&
+    (value.keys as any) instanceof Function &&
+    (value.values as any) instanceof Function
   );
 }
 
@@ -200,6 +206,45 @@ class Headers {
     delete this.headers[name.toLowerCase()];
   }
 
+  private getIterator(type: "key" | "value" | "pairs"): Iterable<string | [string, string]> {
+    const result: (string | [string, string])[] = [];
+    this.forEach(
+      (value: string, key: string) => {
+        if (type === "key") {
+          result.push(key);
+        } else if (type === "value") {
+          result.push(value);
+        } else if (type === "pairs") {
+          result.push([key, value]);
+        }
+      }
+    );
+    return (result[Symbol.iterator]() as any) as Iterable<string | [string, string]>;
+  }
+
+  keys(): Iterable<string> {
+    return this.getIterator("key") as Iterable<string>;
+  }
+
+  values(): Iterable<string> {
+    return this.getIterator("value") as Iterable<string>;
+  }
+
+  entries(): Iterable<[string, string]> {
+    return this.getIterator("pairs") as Iterable<[string, string]>;
+  }
+
+  [Symbol.iterator](): Iterable<[string, string]> {
+    return this.entries();
+  }
+
 }
+
+Object.defineProperty(Headers.prototype, Symbol.toStringTag, {
+  value: "Headers",
+  writable: false,
+  enumerable: false,
+  configurable: true
+});
 
 export default Headers;
