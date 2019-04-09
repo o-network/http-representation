@@ -13,6 +13,7 @@ export type BodyRepresentation = {
   blob?: Blob;
   formData?: FormData;
   arrayBuffer?: ArrayBuffer;
+  buffer?: Buffer;
 };
 
 // From https://github.com/github/fetch/blob/master/fetch.js
@@ -31,7 +32,8 @@ const support = {
       }
     })(),
   formData: "FormData" in globalOrSelf,
-  arrayBuffer: "ArrayBuffer" in globalOrSelf
+  arrayBuffer: "ArrayBuffer" in globalOrSelf,
+  buffer: "Buffer" in globalOrSelf
 };
 
 function cloneUint8Array(array: ArrayBufferLike): ArrayBufferLike {
@@ -77,6 +79,15 @@ function fileReaderReady(reader: FileReader): Promise<string | ArrayBuffer> {
       reject(reader.error);
     };
   });
+}
+
+function readBufferAsArrayBuffer(buffer: Buffer): ArrayBuffer {
+  const arrayBuffer = new ArrayBuffer(buffer.length);
+  const view = new Uint8Array(arrayBuffer);
+  for (let index = 0; index < buffer.length; index += 1) {
+    view[index] = buffer[index];
+  }
+  return arrayBuffer;
 }
 
 async function readBlobAsArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
@@ -144,6 +155,9 @@ function getBody(body: BodyInit): BodyRepresentation {
   if (!body ||  typeof body === "string") {
     return { text: body || "" };
   }
+  if (support.buffer && Buffer.isBuffer(body)) {
+    return { buffer: body };
+  }
   if (support.blob && Blob.prototype.isPrototypeOf(body)) {
     return { blob: body };
   }
@@ -165,11 +179,16 @@ function getBody(body: BodyInit): BodyRepresentation {
 }
 
 const SYMBOL_IGNORE_CONSUME = Symbol("Ignore bodyUsed");
+const SYMBOL_BUFFER = Symbol("buffer");
 
 // Escape from spec
 export function ignoreBodyUsed(body: Body) {
   body[SYMBOL_IGNORE_CONSUME] = true;
   return body;
+}
+
+export function asBuffer(body: Body) {
+  return body[SYMBOL_BUFFER]();
 }
 
 export default class Body {
@@ -195,6 +214,26 @@ export default class Body {
     }
   }
 
+  async [SYMBOL_BUFFER](): Promise<Buffer> {
+    const rejected = this.consumed();
+    if (rejected) {
+      return rejected;
+    }
+    if (!support.buffer) {
+      throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.buffer) {
+      return this.bodyRepresentation.buffer;
+    }
+    try {
+      const arrayBuffer = await this.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (e) {
+      // We don't want to have a confusing message, so remap to this
+      throw new Error("Could not read body as Buffer");
+    }
+  }
+
   async arrayBuffer(): Promise<ArrayBuffer> {
     const rejected = this.consumed();
     if (rejected) {
@@ -202,6 +241,9 @@ export default class Body {
     }
     if (!support.arrayBuffer) {
       throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.buffer) {
+      return readBufferAsArrayBuffer(this.bodyRepresentation.buffer);
     }
     // This should be the case for Node.js
     if (this.bodyRepresentation.arrayBuffer) {
@@ -229,6 +271,10 @@ export default class Body {
     }
     if (this.bodyRepresentation.blob) {
       return this.bodyRepresentation.blob;
+    }
+    // I don't think any environment that supports buffer & blob?
+    if (this.bodyRepresentation.buffer) {
+      return new Blob([readBufferAsArrayBuffer(this.bodyRepresentation.buffer)]);
     }
     if (this.bodyRepresentation.arrayBuffer) {
       return new Blob([this.bodyRepresentation.arrayBuffer]);
@@ -280,6 +326,9 @@ export default class Body {
   }
 
   private async textNoConsumeCheck(): Promise<string> {
+    if (this.bodyRepresentation.buffer) {
+      return this.bodyRepresentation.buffer.toString("utf-8");
+    }
     if (this.bodyRepresentation.blob) {
       return readBlobAsText(this.bodyRepresentation.blob);
     }
