@@ -203,6 +203,7 @@ function getBody(body: BodyInit): BodyRepresentation {
 const SYMBOL_IGNORE_CONSUME = Symbol("Ignore bodyUsed");
 const SYMBOL_BUFFER = Symbol("buffer");
 const SYMBOL_READABLE = Symbol("readable");
+const SYMBOL_BEST_SUITED = Symbol("bestSuited");
 
 function cloneReadable(stream: Readable): Readable {
 
@@ -230,17 +231,21 @@ function cloneReadable(stream: Readable): Readable {
 }
 
 // Escape from spec
-export function ignoreBodyUsed(body: Body) {
+export function ignoreBodyUsed<T extends { [SYMBOL_IGNORE_CONSUME]: boolean }>(body: T): T {
   body[SYMBOL_IGNORE_CONSUME] = true;
   return body;
 }
 
-export function asBuffer(body: Body) {
+export function asBuffer(body: Body): Promise<Buffer> {
   return body[SYMBOL_BUFFER]();
 }
 
-export function asReadable(body: Body) {
+export function asReadable(body: Body): Promise<Readable> {
   return body[SYMBOL_READABLE]();
+}
+
+export function asBestSuited(body: Body): Promise<BodyRepresentation> {
+  return body[SYMBOL_BEST_SUITED]();
 }
 
 export default class Body {
@@ -317,6 +322,18 @@ export default class Body {
     }
   }
 
+  async [SYMBOL_BEST_SUITED](): Promise<BodyRepresentation> {
+    const rejected = this.consumed();
+    if (rejected) {
+      return rejected;
+    }
+    // Clone if needed
+    if (this.bodyRepresentation.readable) {
+      return { readable: this.cloneReadableIfRequired() };
+    }
+    return this.bodyRepresentation;
+  }
+
   async arrayBuffer(): Promise<ArrayBuffer> {
     const rejected = this.consumed();
     if (rejected) {
@@ -389,6 +406,9 @@ export default class Body {
     }
     if (!support.formData) {
       throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.formData) {
+      return this.bodyRepresentation.formData;
     }
     try {
       return readStringAsFormData(
