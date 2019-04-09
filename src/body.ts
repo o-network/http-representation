@@ -1,12 +1,13 @@
 import Headers, { HeadersInit } from "./headers";
 import globalOrSelf from "./global-or-self";
+import { Readable } from "stream";
 
 export type Emitter<T> = {
   on(event: "data", callback: (chunk: T) => void): void;
   on(event: "end", callback: (...args: any[]) => void): void;
 };
 
-export type BodyInit = Uint8Array | Blob | BufferSource | FormData | URLSearchParams | string | any;
+export type BodyInit = Uint8Array | Readable | Blob | BufferSource | FormData | URLSearchParams | string | any;
 
 export type BodyRepresentation = {
   text?: string;
@@ -14,6 +15,7 @@ export type BodyRepresentation = {
   formData?: FormData;
   arrayBuffer?: ArrayBuffer;
   buffer?: Buffer;
+  readable?: Readable;
 };
 
 // From https://github.com/github/fetch/blob/master/fetch.js
@@ -151,9 +153,29 @@ async function readBlobAsText(blob: Blob) {
   return readArrayBufferAsText(result);
 }
 
+async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
+  return new Promise(
+    (resolve, reject) => {
+      const buffers: Buffer[] = [];
+      readable.on("data", (value: string | Buffer) => {
+        const buffer: Buffer = typeof value === "string" ? Buffer.from(value, "utf-8") : value;
+        buffers.push(buffer);
+      });
+      readable.on("error", reject);
+      readable.on("end", () => {
+        resolve(Buffer.concat(buffers));
+      });
+    }
+  );
+}
+
 function getBody(body: BodyInit): BodyRepresentation {
   if (!body ||  typeof body === "string") {
     return { text: body || "" };
+  }
+  // Require buffer as we expect readable being only supplied in a Node.js environment
+  if (support.buffer && body.readable) {
+    return { readable: body };
   }
   if (support.buffer && Buffer.isBuffer(body)) {
     return { buffer: body };
@@ -180,6 +202,32 @@ function getBody(body: BodyInit): BodyRepresentation {
 
 const SYMBOL_IGNORE_CONSUME = Symbol("Ignore bodyUsed");
 const SYMBOL_BUFFER = Symbol("buffer");
+const SYMBOL_READABLE = Symbol("readable");
+
+function cloneReadable(stream: Readable): Readable {
+
+  const Constructor = Object.getPrototypeOf(stream).constructor;
+  if (!(Constructor instanceof Function)) {
+    throw new Error("Couldn't construct a new readable stream");
+  }
+  const readable: Readable = new Constructor() as Readable;
+
+  readable._read = () => {};
+
+  stream.on("data", (chunk) => {
+    readable.push(chunk);
+  });
+  stream.on("end", () => {
+    // onEofChunk
+    // tslint:disable-next-line
+    readable.push(null);
+  });
+  stream.on("error", (error) => {
+    readable.push(error);
+  });
+
+  return readable;
+}
 
 // Escape from spec
 export function ignoreBodyUsed(body: Body) {
@@ -189,6 +237,10 @@ export function ignoreBodyUsed(body: Body) {
 
 export function asBuffer(body: Body) {
   return body[SYMBOL_BUFFER]();
+}
+
+export function asReadable(body: Body) {
+  return body[SYMBOL_READABLE]();
 }
 
 export default class Body {
@@ -214,6 +266,32 @@ export default class Body {
     }
   }
 
+  async [SYMBOL_READABLE](): Promise<Readable> {
+    const rejected = this.consumed();
+    if (rejected) {
+      return rejected;
+    }
+    if (!support.buffer) {
+      throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.readable) {
+      return this.cloneReadableIfRequired();
+    }
+    throw new Error("Required Readable body, didn't get one");
+  }
+
+  private cloneReadableIfRequired(): Readable {
+    if (!this.bodyRepresentation.readable) {
+      return undefined;
+    }
+    if (this[SYMBOL_IGNORE_CONSUME]) {
+      // Make a clone so we can re-use
+      return cloneReadable(this.bodyRepresentation.readable);
+    } else {
+      return this.bodyRepresentation.readable;
+    }
+  }
+
   async [SYMBOL_BUFFER](): Promise<Buffer> {
     const rejected = this.consumed();
     if (rejected) {
@@ -221,6 +299,11 @@ export default class Body {
     }
     if (!support.buffer) {
       throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.readable) {
+      return readReadableAsBuffer(
+        this.cloneReadableIfRequired()
+      );
     }
     if (this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer;
@@ -241,6 +324,11 @@ export default class Body {
     }
     if (!support.arrayBuffer) {
       throw new Error("Not available");
+    }
+    if (this.bodyRepresentation.readable) {
+      return readBufferAsArrayBuffer(
+        await readReadableAsBuffer(this.bodyRepresentation.readable)
+      );
     }
     if (this.bodyRepresentation.buffer) {
       return readBufferAsArrayBuffer(this.bodyRepresentation.buffer);
@@ -271,6 +359,15 @@ export default class Body {
     }
     if (this.bodyRepresentation.blob) {
       return this.bodyRepresentation.blob;
+    }
+    if (this.bodyRepresentation.readable) {
+      return new Blob([
+        readBufferAsArrayBuffer(
+          await readReadableAsBuffer(
+            this.bodyRepresentation.readable
+          )
+        )
+      ]);
     }
     // I don't think any environment that supports buffer & blob?
     if (this.bodyRepresentation.buffer) {
@@ -326,6 +423,12 @@ export default class Body {
   }
 
   private async textNoConsumeCheck(): Promise<string> {
+    if (this.bodyRepresentation.readable) {
+      const buffer = await readReadableAsBuffer(
+        this.cloneReadableIfRequired()
+      );
+      return buffer.toString("utf-8");
+    }
     if (this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer.toString("utf-8");
     }
@@ -342,11 +445,12 @@ export default class Body {
   }
 
   private consumed(): Promise<any> {
-    if (this[SYMBOL_IGNORE_CONSUME]) {
-      return undefined;
-    }
     if (this.bodyUsed) {
       return Promise.reject(new TypeError("Already read"));
+    }
+    // Can only ignore after the body has been used
+    if (this[SYMBOL_IGNORE_CONSUME]) {
+      return undefined;
     }
     this.bodyUsed = true;
     return undefined;
