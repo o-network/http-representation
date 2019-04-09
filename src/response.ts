@@ -19,27 +19,16 @@ class Response extends Body {
 
   public readonly status: number;
   public readonly statusText: string;
-  public readonly headers: Headers;
-
-  private static networkError: boolean = false;
 
   constructor(body?: BodyInit, init?: ResponseInit) {
-    super(body);
+    super(body, init && init.headers);
     this.status = init && init.status || 200;
     this.statusText = init && init.statusText;
-    this.headers = new Headers(init && init.headers);
     this[TYPE] = "default";
 
     if (body && [101, 204, 205, 304].indexOf(this.status) !== -1) {
       throw new TypeError("Body provided for a null-body status");
     }
-  }
-
-  async text(): Promise<string> {
-    if (typeof this.body !== "string") {
-      throw new Error("body provided was not a string. PRs Welcome");
-    }
-    return Promise.resolve(this.body);
   }
 
   get ok() {

@@ -13,24 +13,22 @@ export type RequestInit = {
 class Request extends Body {
   public readonly method: RequestMethod;
   public readonly url: string;
-  public readonly headers: Headers;
   public readonly body: BodyInit;
 
   constructor(input: RequestInfo, init?: RequestInit) {
-    super((init && init.body) || (input instanceof Request && input.body) || undefined);
-    if (typeof input === "string") {
-      this.url = input;
-    } else {
-      this.url = input.url;
-    }
-    this.method = init && init.method || "GET";
     let headerCandidate = {};
     if (init && init.headers) {
       headerCandidate = init.headers;
     } else if (input instanceof Request) {
       headerCandidate = input.headers;
     }
-    this.headers = new Headers(headerCandidate);
+    super((init && init.body) || (input instanceof Request && input.body) || undefined, headerCandidate);
+    if (typeof input === "string") {
+      this.url = input;
+    } else {
+      this.url = input.url;
+    }
+    this.method = init && init.method || "GET";
   }
 }
 
