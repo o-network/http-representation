@@ -310,6 +310,9 @@ export default class Body {
     if (this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer;
     }
+    if (typeof this.bodyRepresentation.text === "string") {
+      return Buffer.from(this.bodyRepresentation.text, "utf-8");
+    }
     try {
       const arrayBuffer = await this.arrayBuffer();
       return Buffer.from(arrayBuffer);
@@ -350,6 +353,9 @@ export default class Body {
     // This should be the case for Node.js
     if (this.bodyRepresentation.arrayBuffer) {
       return this.bodyRepresentation.arrayBuffer;
+    }
+    if (typeof this.bodyRepresentation.text === "string") {
+      return readStringAsArrayBuffer(this.bodyRepresentation.text);
     }
     try {
       // This could lead to undefined being returned
