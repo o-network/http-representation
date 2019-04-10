@@ -1,11 +1,7 @@
 import Headers, { HeadersInit } from "./headers";
 import globalOrSelf from "./global-or-self";
 import { Readable } from "stream";
-
-export type Emitter<T> = {
-  on(event: "data", callback: (chunk: T) => void): void;
-  on(event: "end", callback: (...args: any[]) => void): void;
-};
+import { createReplayReadable, ReplayReadable } from "./node/replay-readable";
 
 export type BodyInit = Uint8Array | Readable | Blob | BufferSource | FormData | URLSearchParams | string | any;
 
@@ -165,6 +161,7 @@ async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
       readable.on("end", () => {
         resolve(Buffer.concat(buffers));
       });
+      readable.resume();
     }
   );
 }
@@ -200,38 +197,18 @@ function getBody(body: BodyInit): BodyRepresentation {
   return { text: Object.prototype.toString.call(body) };
 }
 
+const SYMBOL_BODY_USED = Symbol("bodyUsed");
 const SYMBOL_IGNORE_CONSUME = Symbol("Ignore bodyUsed");
 const SYMBOL_BUFFER = Symbol("buffer");
 const SYMBOL_READABLE = Symbol("readable");
 const SYMBOL_BEST_SUITED = Symbol("bestSuited");
 
-function cloneReadable(stream: Readable): Readable {
-
-  const Constructor = Object.getPrototypeOf(stream).constructor;
-  if (!(Constructor instanceof Function)) {
-    throw new Error("Couldn't construct a new readable stream");
-  }
-  const readable: Readable = new Constructor() as Readable;
-
-  readable._read = () => {};
-
-  stream.on("data", (chunk) => {
-    readable.push(chunk);
-  });
-  stream.on("end", () => {
-    // onEofChunk
-    // tslint:disable-next-line
-    readable.push(null);
-  });
-  stream.on("error", (error) => {
-    readable.push(error);
-  });
-
-  return readable;
-}
-
 // Escape from spec
-export function ignoreBodyUsed<T extends { [SYMBOL_IGNORE_CONSUME]: boolean }>(body: T): T {
+export function ignoreBodyUsed<T extends { [SYMBOL_IGNORE_CONSUME]: boolean, [SYMBOL_BODY_USED]: boolean }>(body: T): T {
+  if (body[SYMBOL_BODY_USED]) {
+    // Already used, can't do much more
+    return body;
+  }
   body[SYMBOL_IGNORE_CONSUME] = true;
   return body;
 }
@@ -250,13 +227,15 @@ export function asBestSuited(body: Body): Promise<BodyRepresentation> {
 
 export default class Body {
 
+  public [SYMBOL_BODY_USED]: boolean = false;
   public [SYMBOL_IGNORE_CONSUME]: boolean = false;
 
   private readonly bodyRepresentation: BodyRepresentation;
-  private bodyUsed: boolean = false;
   public readonly headers: Headers;
 
-  constructor(body: BodyInit, headers: HeadersInit) {
+  private readableReplay: Promise<ReplayReadable> = undefined;
+
+  constructor(body: BodyInit, headers?: HeadersInit) {
     this.bodyRepresentation = getBody(body);
     this.headers = new Headers(headers);
 
@@ -280,21 +259,39 @@ export default class Body {
       throw new Error("Not available");
     }
     if (this.bodyRepresentation.readable) {
-      return this.cloneReadableIfRequired();
+      return this.createReadableIfRequired();
     }
     throw new Error("Required Readable body, didn't get one");
   }
 
-  private cloneReadableIfRequired(): Readable {
+  private async createReadableIfRequired(): Promise<Readable> {
     if (!this.bodyRepresentation.readable) {
       return undefined;
     }
-    if (this[SYMBOL_IGNORE_CONSUME]) {
-      // Make a clone so we can re-use
-      return cloneReadable(this.bodyRepresentation.readable);
-    } else {
+    // We aren't going to use it again, so go for it.
+    if (!this[SYMBOL_IGNORE_CONSUME]) {
       return this.bodyRepresentation.readable;
     }
+    if (this.readableReplay) {
+      const replay = await this.readableReplay;
+      if (!replay) {
+        // If we have a promise, then it must have been consumed elsewhere
+        throw new TypeError("Already used");
+      }
+      return (await this.readableReplay)();
+    }
+    this.readableReplay = createReplayReadable(this.bodyRepresentation.readable);
+    const replay = await this.readableReplay;
+    if (replay) {
+      return replay();
+    }
+    if (this[SYMBOL_BODY_USED]) {
+      throw new TypeError("Already used");
+    }
+    // If we can't replay, then lets just returned the initial,
+    // just can't be used multiple times
+    this[SYMBOL_BODY_USED] = true;
+    return this.bodyRepresentation.readable;
   }
 
   async [SYMBOL_BUFFER](): Promise<Buffer> {
@@ -307,7 +304,7 @@ export default class Body {
     }
     if (this.bodyRepresentation.readable) {
       return readReadableAsBuffer(
-        this.cloneReadableIfRequired()
+        await this.createReadableIfRequired()
       );
     }
     if (this.bodyRepresentation.buffer) {
@@ -329,7 +326,7 @@ export default class Body {
     }
     // Clone if needed
     if (this.bodyRepresentation.readable) {
-      return { readable: this.cloneReadableIfRequired() };
+      return { readable: await this.createReadableIfRequired() };
     }
     return this.bodyRepresentation;
   }
@@ -445,7 +442,7 @@ export default class Body {
   private async textNoConsumeCheck(): Promise<string> {
     if (this.bodyRepresentation.readable) {
       const buffer = await readReadableAsBuffer(
-        this.cloneReadableIfRequired()
+        await this.createReadableIfRequired()
       );
       return buffer.toString("utf-8");
     }
@@ -465,14 +462,14 @@ export default class Body {
   }
 
   private consumed(): Promise<any> {
-    if (this.bodyUsed) {
+    if (this[SYMBOL_BODY_USED]) {
       return Promise.reject(new TypeError("Already read"));
     }
     // Can only ignore after the body has been used
     if (this[SYMBOL_IGNORE_CONSUME]) {
       return undefined;
     }
-    this.bodyUsed = true;
+    this[SYMBOL_BODY_USED] = true;
     return undefined;
   }
 
