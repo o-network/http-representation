@@ -60,7 +60,7 @@ export async function createReplayReadable(initial: Readable): Promise<ReplayRea
 
     // Replay the end, because this triggers of the onend process for the duplex
     // (see https://github.com/nodejs/node/blob/b08a867d6016ccf04783a0f91fdbcc3460daf234/lib/_stream_duplex.js#L64)
-    initial.on("end", () => {
+    initial.once("end", () => {
       duplex.emit("end");
       // Forcefully stop any new writes
       duplex._write = () => {};

@@ -157,8 +157,8 @@ async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
         const buffer: Buffer = typeof value === "string" ? Buffer.from(value, "utf-8") : value;
         buffers.push(buffer);
       });
-      readable.on("error", reject);
-      readable.on("end", () => {
+      readable.once("error", reject);
+      readable.once("end", () => {
         resolve(Buffer.concat(buffers));
       });
       readable.resume();
