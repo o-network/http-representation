@@ -34,11 +34,15 @@ export async function createReplayReadable(initial: Readable): Promise<ReplayRea
 
   const chunks: any[] = [];
 
+  let error: Error = undefined;
+
   // Record any chunks that might be needed
   initial.on("data", chunk => chunks.push(chunk));
   // onEofChunk
   // tslint:disable-next-line
   initial.once("end", () => chunks.push(null));
+  // Pick up on any errors and replay them once they resume
+  initial.once("error", value => error = value);
 
   return async (): Promise<Readable> => {
     const duplex = new streamModule.Duplex({
@@ -71,8 +75,13 @@ export async function createReplayReadable(initial: Readable): Promise<ReplayRea
 
     // Trigger a resume of that initial
     duplex.on("resume", () => {
-      // Trigger the initial to resume
-      initial.resume();
+      if (error) {
+        // Replay the error if we received one from the initial
+        duplex.emit("error", error);
+      } else {
+        // Trigger the initial to resume
+        initial.resume();
+      }
     });
 
     return duplex;
