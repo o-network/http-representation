@@ -203,7 +203,7 @@ export function ignoreBodyUsed<T extends { ignoreBodyUsed: () => T }>(body: T): 
 
 export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayBuffer> })): Promise<Buffer> {
   if ((body as any).buffer_DO_NOT_USE_NON_STANDARD) {
-    return (body as any)._DO_NOT_USE_NON_STANDARD();
+    return (body as any).buffer_DO_NOT_USE_NON_STANDARD();
   }
   if (!support.buffer) {
     throw new Error("Could not read body as Buffer");
