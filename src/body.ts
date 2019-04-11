@@ -197,38 +197,49 @@ function getBody(body: BodyInit): BodyRepresentation {
   return { text: Object.prototype.toString.call(body) };
 }
 
-const SYMBOL_BODY_USED = Symbol("bodyUsed");
-const SYMBOL_IGNORE_CONSUME = Symbol("Ignore bodyUsed");
-const SYMBOL_BUFFER = Symbol("buffer");
-const SYMBOL_READABLE = Symbol("readable");
-const SYMBOL_BEST_SUITED = Symbol("bestSuited");
+export function ignoreBodyUsed<T extends { ignoreBodyUsed: () => T }>(body: T): T {
+  return body.ignoreBodyUsed();
+}
 
-// Escape from spec
-export function ignoreBodyUsed<T extends { [SYMBOL_IGNORE_CONSUME]: boolean, [SYMBOL_BODY_USED]: boolean }>(body: T): T {
-  if (body[SYMBOL_BODY_USED]) {
-    // Already used, can't do much more
-    return body;
+export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayBuffer> })): Promise<Buffer> {
+  if ((body as any).buffer_DO_NOT_USE_NON_STANDARD) {
+    return (body as any)._DO_NOT_USE_NON_STANDARD();
   }
-  body[SYMBOL_IGNORE_CONSUME] = true;
-  return body;
+  if (!support.buffer) {
+    throw new Error("Could not read body as Buffer");
+  }
+  // If the body doesn't have the `buffer` function, read as ArrayBuffer, then turn into Buffer
+  const arrayBuffer = await body.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
-export function asBuffer(body: Body): Promise<Buffer> {
-  return body[SYMBOL_BUFFER]();
+export function asReadable(body: Body | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<Readable> {
+  if ((body as any).readable_DO_NOT_USE_NON_STANDARD) {
+    return ((body as any).readable_DO_NOT_USE_NON_STANDARD as Function)();
+  }
+  // We only want to support readable if the body already has a way to handle it,
+  // otherwise we're making assumptions
+  throw new Error("Could not read body as Readable");
 }
 
-export function asReadable(body: Body): Promise<Readable> {
-  return body[SYMBOL_READABLE]();
-}
-
-export function asBestSuited(body: Body): Promise<BodyRepresentation> {
-  return body[SYMBOL_BEST_SUITED]();
+export async function asBestSuited(body: Body | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<BodyRepresentation> {
+  if ((body as any).bestSuited_DO_NOT_USE_NON_STANDARD) {
+    return (body as any).bestSuited_DO_NOT_USE_NON_STANDARD();
+  }
+  // Default to arrayBuffer and return that, its standard across platforms
+  const arrayBuffer = await body.arrayBuffer();
+  return { arrayBuffer };
 }
 
 export default class Body {
 
-  public [SYMBOL_BODY_USED]: boolean = false;
-  public [SYMBOL_IGNORE_CONSUME]: boolean = false;
+
+  get bodyUsed() {
+    return this.bodyUsedInternal;
+  }
+
+  private bodyUsedInternal: boolean = false;
+  private ignoreConsume: boolean = false;
 
   private readonly bodyRepresentation: BodyRepresentation;
   public readonly headers: Headers;
@@ -250,7 +261,7 @@ export default class Body {
     }
   }
 
-  async [SYMBOL_READABLE](): Promise<Readable> {
+  async readable_DO_NOT_USE_NON_STANDARD(): Promise<Readable> {
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -269,7 +280,7 @@ export default class Body {
       return undefined;
     }
     // We aren't going to use it again, so go for it.
-    if (!this[SYMBOL_IGNORE_CONSUME]) {
+    if (!this.ignoreConsume) {
       return this.bodyRepresentation.readable;
     }
     if (this.readableReplay) {
@@ -285,16 +296,16 @@ export default class Body {
     if (replay) {
       return replay();
     }
-    if (this[SYMBOL_BODY_USED]) {
+    if (this.bodyUsedInternal) {
       throw new TypeError("Already used");
     }
     // If we can't replay, then lets just returned the initial,
     // just can't be used multiple times
-    this[SYMBOL_BODY_USED] = true;
+    this.bodyUsedInternal = true;
     return this.bodyRepresentation.readable;
   }
 
-  async [SYMBOL_BUFFER](): Promise<Buffer> {
+  async buffer_DO_NOT_USE_NON_STANDARD(): Promise<Buffer> {
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -322,7 +333,7 @@ export default class Body {
     }
   }
 
-  async [SYMBOL_BEST_SUITED](): Promise<BodyRepresentation> {
+  async bestSuited_DO_NOT_USE_NON_STANDARD(): Promise<BodyRepresentation> {
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -468,15 +479,24 @@ export default class Body {
   }
 
   private consumed(): Promise<any> {
-    if (this[SYMBOL_BODY_USED]) {
+    // We can use the symbol here as we only care about this instance
+    if (this.bodyUsedInternal) {
       return Promise.reject(new TypeError("Already read"));
     }
     // Can only ignore after the body has been used
-    if (this[SYMBOL_IGNORE_CONSUME]) {
+    if (this.ignoreConsume) {
       return undefined;
     }
-    this[SYMBOL_BODY_USED] = true;
+    this.bodyUsedInternal = true;
     return undefined;
+  }
+
+  public ignoreBodyUsed(): this {
+    if (this.bodyUsedInternal || this.ignoreConsume) {
+      return this;
+    }
+    this.ignoreConsume = true;
+    return this;
   }
 
 }

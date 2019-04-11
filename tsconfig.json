@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "esModuleInterop": true,
-        "module": "commonjs",
+        "module": "es6",
         "lib": [
             "es2018",
             "dom"
@@ -9,7 +9,7 @@
         "types": [
             "node"
         ],
-        "target": "es5",
+        "target": "es6",
         "noImplicitAny": true,
         "downlevelIteration": true,
         "moduleResolution": "node",
