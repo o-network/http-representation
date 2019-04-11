@@ -205,6 +205,10 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
   if ((body as any).buffer_DO_NOT_USE_NON_STANDARD) {
     return (body as any).buffer_DO_NOT_USE_NON_STANDARD();
   }
+  if ((body as any).buffer instanceof Function) {
+    // node-fetch support
+    return (body as any).buffer();
+  }
   if (!support.buffer) {
     throw new Error("Could not read body as Buffer");
   }
@@ -233,6 +237,26 @@ export async function asBestSuited(body: Body | { arrayBuffer: () => Promise<Arr
 
 export default class Body {
 
+  get body() {
+    if (this.bodyRepresentation.buffer) {
+      return this.bodyRepresentation.buffer;
+    }
+    if (this.bodyRepresentation.arrayBuffer) {
+      return this.bodyRepresentation.arrayBuffer;
+    }
+    if (this.bodyRepresentation.formData) {
+      return this.bodyRepresentation.formData;
+    }
+    if (this.bodyRepresentation.blob) {
+      return this.bodyRepresentation.blob;
+    }
+    if (this.bodyRepresentation.text) {
+      return this.bodyRepresentation.text;
+    }
+    // Don't return the readable via body, its only a representation
+    // of the body, rather than the body itself
+    return undefined;
+  }
 
   get bodyUsed() {
     return this.bodyUsedInternal;
