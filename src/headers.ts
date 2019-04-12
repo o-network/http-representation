@@ -211,7 +211,9 @@ class Headers {
     const result: (string | [string, string])[] = [];
     this.forEach(
       (value: string, key: string) => {
-        if (type === "key") {
+        if (type === "key" && result.indexOf(key) === -1) {
+          // We don't want repeating keys, so only include if it wasn't
+          // already included
           result.push(key);
         } else if (type === "value") {
           result.push(value);
