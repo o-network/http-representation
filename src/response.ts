@@ -4,7 +4,7 @@ import Headers, { HeadersInit } from "./headers";
 export type ResponseInit = Response | {
   status?: number;
   statusText?: string;
-  headers?: HeadersInit
+  headers?: HeadersInit;
 };
 
 const REDIRECTED = Symbol("Redirected");
@@ -15,18 +15,24 @@ class Response extends Body {
   public [REDIRECTED]: boolean = false;
   public [TYPE]: "default" | "error";
 
-  public readonly body: BodyInit;
+  protected editableStatus: number;
+  protected editableStatusText: string;
 
-  public readonly status: number;
-  public readonly statusText: string;
+  public get status() {
+    return this.editableStatus;
+  }
+
+  public get statusText() {
+    return this.editableStatusText;
+  }
 
   constructor(body?: BodyInit, init?: ResponseInit) {
     super(body, init && init.headers);
-    this.status = init && init.status || 200;
-    this.statusText = init && init.statusText;
+    this.editableStatus = init ? init.status : 200;
+    this.editableStatusText = init ? init.statusText : undefined;
     this[TYPE] = "default";
 
-    if (body && [101, 204, 205, 304].indexOf(this.status) !== -1) {
+    if (init && typeof init.status === "number" && body && [101, 204, 205, 304].indexOf(this.status) !== -1) {
       throw new TypeError("Body provided for a null-body status");
     }
   }
@@ -73,5 +79,7 @@ class Response extends Body {
   }
 
 }
+
+export { Response };
 
 export default Response;

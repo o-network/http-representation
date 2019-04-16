@@ -32,4 +32,6 @@ class Request extends Body {
   }
 }
 
+export { Request };
+
 export default Request;

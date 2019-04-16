@@ -3,7 +3,11 @@ import globalOrSelf from "./global-or-self";
 import { Readable } from "stream";
 import { createReplayReadable, ReplayReadable } from "./node/replay-readable";
 
-export type BodyInit = Uint8Array | Readable | Blob | BufferSource | FormData | URLSearchParams | string | any;
+export type BodyValue = Blob | FormData | ArrayBuffer | Buffer | string;
+
+export type BodyLike = { body: BodyValue };
+
+export type BodyInit = Uint8Array | BufferSource | URLSearchParams | Readable | BodyValue | BodyLike | string | any;
 
 export type BodyRepresentation = {
   text?: string;
@@ -167,8 +171,16 @@ async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
 }
 
 function getBody(body: BodyInit): BodyRepresentation {
-  if (!body ||  typeof body === "string") {
-    return { text: body || "" };
+  if (body == undefined) {
+    // No body does not mean text body
+    return { };
+  }
+  if (typeof body === "string") {
+    return { text: body };
+  }
+  if (body && (body.body || typeof body.body === "string")) {
+    // BodyLike
+    return getBody(body.body);
   }
   // Require buffer as we expect readable being only supplied in a Node.js environment
   if (support.buffer && body.readable) {
@@ -217,7 +229,7 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
   return Buffer.from(arrayBuffer);
 }
 
-export function asReadable(body: Body | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<Readable> {
+export function asReadable(body: Body | BodyLike): Promise<Readable> {
   if ((body as any).readable_DO_NOT_USE_NON_STANDARD) {
     return ((body as any).readable_DO_NOT_USE_NON_STANDARD as Function)();
   }
@@ -226,18 +238,17 @@ export function asReadable(body: Body | { arrayBuffer: () => Promise<ArrayBuffer
   throw new Error("Could not read body as Readable");
 }
 
-export async function asBestSuited(body: Body | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<BodyRepresentation> {
+export async function asBestSuited(body: Body | BodyLike): Promise<BodyRepresentation> {
   if ((body as any).bestSuited_DO_NOT_USE_NON_STANDARD) {
     return (body as any).bestSuited_DO_NOT_USE_NON_STANDARD();
   }
-  // Default to arrayBuffer and return that, its standard across platforms
-  const arrayBuffer = await body.arrayBuffer();
-  return { arrayBuffer };
+  // Use getBody to figure out what we should really be using
+  return getBody(body);
 }
 
-export default class Body {
+class Body {
 
-  get body() {
+  get body(): BodyValue {
     if (this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer;
     }
@@ -253,12 +264,15 @@ export default class Body {
     if (this.bodyRepresentation.text) {
       return this.bodyRepresentation.text;
     }
-    // Don't return the readable via body, its only a representation
-    // of the body, rather than the body itself
+    if (this.bodyRepresentation.readable) {
+      // Don't throw in an accessor
+      // throw new Error("Body is using a Readable instance, to access the readable body please use asReadable, or any of the alternative accessor functions (arrayBuffer, json, text)");
+      return undefined;
+    }
     return undefined;
   }
 
-  get bodyUsed() {
+  get bodyUsed(): boolean {
     return this.bodyUsedInternal;
   }
 
@@ -524,3 +538,7 @@ export default class Body {
   }
 
 }
+
+export { Body };
+
+export default Body;

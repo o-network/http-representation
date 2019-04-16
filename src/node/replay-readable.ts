@@ -1,6 +1,9 @@
 import { Readable } from "stream";
 
-type ReadableLike = Readable | { push: (chunk: any) => void, emit: (event: "error", error: Error) => void };
+type AddEventListener = (event: string, callback: (...args: any[]) => void) => void;
+
+type ReadableLike = Readable | { resume: () => any, pipe: () => any, read: () => any, on: AddEventListener, once: AddEventListener, push: (chunk: any) => void, emit: (event: "error", error: Error) => void };
+
 export type ReplayReadable = () => Promise<Readable>;
 
 async function getModule(module: string) {
@@ -23,7 +26,7 @@ async function getModule(module: string) {
  *
  * @param initial
  */
-export async function createReplayReadable(initial: Readable): Promise<ReplayReadable> {
+export async function createReplayReadable(initial: ReadableLike): Promise<ReplayReadable> {
   // Return undefined if any error, as we will handle it in the next statement
   const streamModule = await getModule("stream")
     .catch(() => undefined);

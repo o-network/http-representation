@@ -250,4 +250,6 @@ Object.defineProperty(Headers.prototype, Symbol.toStringTag, {
   configurable: true
 });
 
+export { Headers };
+
 export default Headers;
