@@ -173,7 +173,7 @@ async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
 function getBody(body: BodyInit): BodyRepresentation {
   if (body == undefined) {
     // No body does not mean text body
-    return { };
+    return undefined;
   }
   if (typeof body === "string") {
     return { text: body };
@@ -226,7 +226,7 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
   }
   // If the body doesn't have the `buffer` function, read as ArrayBuffer, then turn into Buffer
   const arrayBuffer = await body.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return arrayBuffer ? Buffer.from(arrayBuffer) : undefined
 }
 
 export function asReadable(body: Body | BodyLike): Promise<Readable> {
@@ -249,6 +249,9 @@ export async function asBestSuited(body: Body | BodyLike): Promise<BodyRepresent
 class Body {
 
   get body(): BodyValue {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     if (this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer;
     }
@@ -288,7 +291,7 @@ class Body {
     this.bodyRepresentation = getBody(body);
     this.headers = new Headers(headers);
 
-    if (!this.headers.has("content-type")) {
+    if (this.bodyRepresentation && !this.headers.has("content-type")) {
       if (typeof this.bodyRepresentation.text === "string") {
         this.headers.set("content-type", "text/plain;charset=UTF-8");
       } else if (this.bodyRepresentation.blob && this.bodyRepresentation.blob.type) {
@@ -300,6 +303,9 @@ class Body {
   }
 
   async readable_DO_NOT_USE_NON_STANDARD(): Promise<Readable> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -314,6 +320,9 @@ class Body {
   }
 
   private async createReadableIfRequired(): Promise<Readable> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     if (!this.bodyRepresentation.readable) {
       return undefined;
     }
@@ -344,6 +353,9 @@ class Body {
   }
 
   async buffer_DO_NOT_USE_NON_STANDARD(): Promise<Buffer> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -372,6 +384,9 @@ class Body {
   }
 
   async bestSuited_DO_NOT_USE_NON_STANDARD(): Promise<BodyRepresentation> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -384,6 +399,9 @@ class Body {
   }
 
   async arrayBuffer(): Promise<ArrayBuffer> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -419,6 +437,9 @@ class Body {
   }
 
   async blob(): Promise<Blob> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -452,6 +473,9 @@ class Body {
   }
 
   async formData(): Promise<FormData> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -473,6 +497,9 @@ class Body {
   }
 
   async json(): Promise<any> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
@@ -487,6 +514,9 @@ class Body {
   }
 
   async text(): Promise<string> {
+    if (!this.bodyRepresentation) {
+      return undefined;
+    }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
