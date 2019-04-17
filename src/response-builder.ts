@@ -101,6 +101,8 @@ class ResponseBuilder {
         throw new Error("Provided full response but the body was already used");
       }
       body = fullResponse.body;
+      status = fullResponse.status;
+      statusText = fullResponse.statusText;
     }
 
     const headers = new Headers();
