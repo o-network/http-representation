@@ -226,7 +226,7 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
   }
   // If the body doesn't have the `buffer` function, read as ArrayBuffer, then turn into Buffer
   const arrayBuffer = await body.arrayBuffer();
-  return arrayBuffer ? Buffer.from(arrayBuffer) : undefined
+  return arrayBuffer ? Buffer.from(arrayBuffer) : undefined;
 }
 
 export function asReadable(body: Body | BodyLike): Promise<Readable> {
