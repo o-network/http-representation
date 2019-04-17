@@ -43,7 +43,9 @@ class ResponseBuilder {
   }
 
   withHeaders(...headers: (Headers | HeadersInit)[]): this {
-    const responses = headers.map(headers => new PartialResponse(undefined, { headers: new Headers(headers) }));
+    const responses = headers
+      .filter(value => value != undefined)
+      .map(headers => new PartialResponse(undefined, { headers: new Headers(headers) }));
     return this.with(...responses);
   }
 
@@ -66,7 +68,9 @@ class ResponseBuilder {
   }
 
   with(...responses: (Response | PartialResponse)[]): this {
-    responses.forEach(response => this.withSingle(response));
+    responses
+      .filter(value => value != undefined)
+      .forEach(response => this.withSingle(response));
     return this;
   }
 
