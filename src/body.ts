@@ -2,6 +2,7 @@ import Headers, { HeadersInit } from "./headers";
 import globalOrSelf from "./global-or-self";
 import { Readable } from "stream";
 import { createReplayReadable, ReplayReadable } from "./node/replay-readable";
+import {globalAgent} from "http";
 
 export type BodyValue = Blob | FormData | ArrayBuffer | Buffer | string;
 
@@ -14,7 +15,7 @@ export type BodyRepresentation = {
   blob?: Blob;
   formData?: FormData;
   arrayBuffer?: ArrayBuffer;
-  buffer?: Buffer;
+  buffer?: Buffer | Uint8Array;
   readable?: Readable;
 };
 
@@ -83,7 +84,7 @@ function fileReaderReady(reader: FileReader): Promise<string | ArrayBuffer> {
   });
 }
 
-function readBufferAsArrayBuffer(buffer: Buffer): ArrayBuffer {
+function readBufferAsArrayBuffer(buffer: Uint8Array): ArrayBuffer {
   const arrayBuffer = new ArrayBuffer(buffer.length);
   const view = new Uint8Array(arrayBuffer);
   for (let index = 0; index < buffer.length; index += 1) {
@@ -188,6 +189,8 @@ function getBody(body: BodyInit): BodyRepresentation {
   }
   if (support.buffer && Buffer.isBuffer(body)) {
     return { buffer: body };
+  } else if (body instanceof Uint8Array) {
+    return { buffer: body };
   }
   if (support.blob && Blob.prototype.isPrototypeOf(body)) {
     return { blob: body };
@@ -213,7 +216,7 @@ export function ignoreBodyUsed<T extends { ignoreBodyUsed: () => T }>(body: T): 
   return body.ignoreBodyUsed();
 }
 
-export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayBuffer> })): Promise<Buffer> {
+export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayBuffer> })): Promise<Buffer | Uint8Array> {
   if ((body as any).buffer_DO_NOT_USE_NON_STANDARD) {
     return (body as any).buffer_DO_NOT_USE_NON_STANDARD();
   }
@@ -221,12 +224,15 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
     // node-fetch support
     return (body as any).buffer();
   }
-  if (!support.buffer) {
-    throw new Error("Could not read body as Buffer");
-  }
-  // If the body doesn't have the `buffer` function, read as ArrayBuffer, then turn into Buffer
   const arrayBuffer = await body.arrayBuffer();
-  return arrayBuffer ? Buffer.from(arrayBuffer) : undefined;
+  if (!arrayBuffer) {
+    return undefined;
+  }
+  if (support.buffer) {
+    return globalOrSelf.Buffer.from(arrayBuffer)
+  } else {
+    return new Uint8Array(arrayBuffer);
+  }
 }
 
 export function asReadable(body: Body | BodyLike): Promise<Readable> {
@@ -352,16 +358,13 @@ class Body {
     return this.bodyRepresentation.readable;
   }
 
-  async buffer_DO_NOT_USE_NON_STANDARD(): Promise<Buffer> {
+  async buffer_DO_NOT_USE_NON_STANDARD(): Promise<Uint8Array> {
     if (!this.bodyRepresentation) {
       return undefined;
     }
     const rejected = this.consumed();
     if (rejected) {
       return rejected;
-    }
-    if (!support.buffer) {
-      throw new Error("Not available");
     }
     if (this.bodyRepresentation.readable) {
       return readReadableAsBuffer(
@@ -376,7 +379,11 @@ class Body {
     }
     try {
       const arrayBuffer = await this.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      if (support.buffer) {
+        return globalOrSelf.Buffer.from(arrayBuffer);
+      } else {
+        return new Uint8Array(arrayBuffer);
+      }
     } catch (e) {
       // We don't want to have a confusing message, so remap to this
       throw new Error("Could not read body as Buffer");
