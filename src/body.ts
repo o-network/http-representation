@@ -2,7 +2,6 @@ import Headers, { HeadersInit } from "./headers";
 import globalOrSelf from "./global-or-self";
 import { Readable } from "stream";
 import { createReplayReadable, ReplayReadable } from "./node/replay-readable";
-import {globalAgent} from "http";
 
 export type BodyValue = Blob | FormData | ArrayBuffer | Buffer | string;
 
@@ -229,7 +228,7 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
     return undefined;
   }
   if (support.buffer) {
-    return globalOrSelf.Buffer.from(arrayBuffer)
+    return globalOrSelf.Buffer.from(arrayBuffer);
   } else {
     return new Uint8Array(arrayBuffer);
   }
