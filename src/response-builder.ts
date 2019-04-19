@@ -3,10 +3,15 @@ import PartialResponse from "./partial-response";
 import Response  from "./response";
 import { asReadable, BodyInit } from "./body";
 
+export type ResponseBuilderHeaderProcessor = (headers: Headers) => HeadersInit;
+
 export type ResponseBuilderOptions = {
-  ignoreSubsequentFullResponses: boolean;
-  replaceSubsequentFullResponses: boolean;
-  disableReadableCheck: boolean;
+  ignoreSubsequentFullResponses?: boolean;
+  replaceSubsequentFullResponses?: boolean;
+  disableReadableCheck?: boolean;
+  processHeaders?: ResponseBuilderHeaderProcessor;
+  useSetForEntityHeaders?: boolean;
+  entityHeaders?: string[];
 };
 
 class ResponseBuilder {
@@ -17,6 +22,9 @@ class ResponseBuilder {
   private readonly ignoreSubsequentFullResponses: boolean = false;
   private readonly replaceSubsequentFullResponses: boolean = false;
   private readonly disableReadableCheck: boolean = false;
+  private readonly useSetForEntityHeaders: boolean = false;
+  private readonly entityHeaders: string[] = undefined;
+  private readonly processHeaders: ResponseBuilderHeaderProcessor = undefined;
 
   private response: Promise<Response> = undefined;
   private contaminated: boolean = false;
@@ -34,6 +42,12 @@ class ResponseBuilder {
     }
     if (options && options.disableReadableCheck) {
       this.disableReadableCheck = true;
+    }
+    if (options && options.processHeaders) {
+      this.processHeaders = options.processHeaders;
+    }
+    if (options && options.useSetForEntityHeaders) {
+      this.useSetForEntityHeaders = options.useSetForEntityHeaders;
     }
   }
 
@@ -111,9 +125,24 @@ class ResponseBuilder {
 
     const headers = new Headers();
 
+    const entityHeaders = this.entityHeaders || [
+      "content-type",
+      "content-length",
+      "content-encoding",
+      "content-disposition",
+      "content-language",
+      "content-location"
+    ];
+
     const addResponse = async (response: PartialResponse) => {
       // Append everything
-      response.headers.forEach((value, name) => headers.append(name, value));
+      response.headers.forEach((value, name) => {
+        if (this.useSetForEntityHeaders && entityHeaders.includes(name.toLowerCase())) {
+          headers.set(name, value);
+        } else {
+          headers.append(name, value);
+        }
+      });
 
       if (fullResponse) {
         // We already have a response, so no need to get the body or status code
@@ -160,7 +189,7 @@ class ResponseBuilder {
     );
 
     return new Response(body, {
-      headers,
+      headers: (this.processHeaders ? this.processHeaders(headers) : undefined) || headers,
       status,
       statusText
     });
