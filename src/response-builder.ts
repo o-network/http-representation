@@ -64,6 +64,12 @@ class ResponseBuilder {
   }
 
   private withSingle(response: Response | PartialResponse) {
+    if (!response) {
+      // Not contaminated as it has no effect, but we want to record
+      // that we had an undefined response at this layer
+      this.editableResponses.push(undefined);
+      return;
+    }
     if (!(response as PartialResponse).partial) {
       if (this.fullResponseAppended && this.ignoreSubsequentFullResponses) {
         return this;
@@ -83,7 +89,6 @@ class ResponseBuilder {
 
   with(...responses: (Response | PartialResponse)[]): this {
     responses
-      .filter(value => value != undefined)
       .forEach(response => this.withSingle(response));
     return this;
   }
@@ -101,7 +106,7 @@ class ResponseBuilder {
       return this.response;
     }
     // Cache so that we don't need to build every time if we haven't touched anything
-    this.response = this.join(this.editableResponses);
+    this.response = this.join(this.editableResponses.filter(value => value));
     this.contaminated = false;
     return this.response;
   }
