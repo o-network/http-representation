@@ -132,6 +132,10 @@ function readStringAsFormData(value: string) {
 
 function readArrayBufferAsText(arrayBuffer: ArrayBuffer): string {
   const view = new Uint8Array(arrayBuffer);
+  return readUint8ArrayAsText(view);
+}
+
+function readUint8ArrayAsText(view: Uint8Array): string {
   const chars = new Array(view.length);
   for (let index = 0; index < view.length; index += 1) {
     chars[index] = String.fromCharCode(view[index]);
@@ -537,8 +541,10 @@ class Body {
       );
       return buffer.toString("utf-8");
     }
-    if (this.bodyRepresentation.buffer) {
+    if (support.buffer && this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer.toString("utf-8");
+    } else if (this.bodyRepresentation.buffer) {
+      return readUint8ArrayAsText(this.bodyRepresentation.buffer);
     }
     if (this.bodyRepresentation.blob) {
       return readBlobAsText(this.bodyRepresentation.blob);
@@ -546,7 +552,7 @@ class Body {
     if (this.bodyRepresentation.arrayBuffer) {
       return readArrayBufferAsText(this.bodyRepresentation.arrayBuffer);
     }
-    if (typeof this.bodyRepresentation.text === "string") {
+    if (typeof this.bodyRepresentation.text !== "string") {
       throw new Error("Could not read body as text");
     }
     return this.bodyRepresentation.text;
