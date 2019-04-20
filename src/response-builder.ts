@@ -12,6 +12,7 @@ export type ResponseBuilderOptions = {
   processHeaders?: ResponseBuilderHeaderProcessor;
   useSetForEntityHeaders?: boolean;
   entityHeaders?: string[];
+  buildPartialIfPossible?: boolean;
 };
 
 class ResponseBuilder {
@@ -25,6 +26,7 @@ class ResponseBuilder {
   private readonly useSetForEntityHeaders: boolean = false;
   private readonly entityHeaders: string[] = undefined;
   private readonly processHeaders: ResponseBuilderHeaderProcessor = undefined;
+  private readonly buildPartialIfPossible: boolean = true;
 
   private response: Promise<Response> = undefined;
   private contaminated: boolean = false;
@@ -48,6 +50,9 @@ class ResponseBuilder {
     }
     if (options && options.useSetForEntityHeaders) {
       this.useSetForEntityHeaders = options.useSetForEntityHeaders;
+    }
+    if (options && options.buildPartialIfPossible) {
+      this.buildPartialIfPossible = options.buildPartialIfPossible;
     }
   }
 
@@ -114,7 +119,8 @@ class ResponseBuilder {
   private async join(responses: (PartialResponse | Response)[]): Promise<Response> {
     let body: BodyInit = undefined,
       status: number = undefined,
-      statusText: string = undefined;
+      statusText: string = undefined,
+      partial = true;
 
     const fullResponse = responses
       .find((response: PartialResponse) => !response.partial);
@@ -126,6 +132,7 @@ class ResponseBuilder {
       body = fullResponse.body;
       status = fullResponse.status;
       statusText = fullResponse.statusText;
+      partial = false;
     }
 
     const headers = new Headers();
@@ -140,6 +147,10 @@ class ResponseBuilder {
     ];
 
     const addResponse = async (response: PartialResponse) => {
+      if (!(response as PartialResponse).partial) {
+        partial = false;
+      }
+
       // Append everything
       response.headers.forEach((value, name) => {
         if (this.useSetForEntityHeaders && entityHeaders.includes(name.toLowerCase())) {
@@ -193,7 +204,9 @@ class ResponseBuilder {
       Promise.resolve(undefined)
     );
 
-    return new Response(body, {
+    const ResponseConstructor = this.buildPartialIfPossible && partial ? PartialResponse : Response;
+
+    return new ResponseConstructor(body, {
       headers: (this.processHeaders ? this.processHeaders(headers) : undefined) || headers,
       status,
       statusText
