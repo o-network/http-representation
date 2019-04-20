@@ -83,7 +83,7 @@ function fileReaderReady(reader: FileReader): Promise<string | ArrayBuffer> {
   });
 }
 
-function readBufferAsArrayBuffer(buffer: Uint8Array): ArrayBuffer {
+function readUint8ArrayAsArrayBuffer(buffer: Uint8Array): ArrayBuffer {
   const arrayBuffer = new ArrayBuffer(buffer.length);
   const view = new Uint8Array(arrayBuffer);
   for (let index = 0; index < buffer.length; index += 1) {
@@ -104,6 +104,11 @@ async function readBlobAsArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
     return undefined;
   }
   return result;
+}
+
+function readStringAsUint8Array(value: string): Uint8Array {
+  const arrayBuffer = readStringAsArrayBuffer(value);
+  return new Uint8Array(arrayBuffer);
 }
 
 function readStringAsArrayBuffer(value: string): ArrayBuffer {
@@ -157,7 +162,7 @@ async function readBlobAsText(blob: Blob) {
   return readArrayBufferAsText(result);
 }
 
-async function readReadableAsBuffer(readable: Readable): Promise<Uint8Array> {
+async function readReadableAsUint8Array(readable: Readable): Promise<Uint8Array> {
   const concat = (values: Uint8Array[]): Uint8Array => {
     if (globalOrSelf.Buffer) {
       return globalOrSelf.Buffer.concat(values);
@@ -181,14 +186,15 @@ async function readReadableAsBuffer(readable: Readable): Promise<Uint8Array> {
 
   return new Promise(
     (resolve, reject) => {
-      const buffers: Uint8Array[] = [];
+      const chunks: Uint8Array[] = [];
       readable.on("data", (value: string | Buffer) => {
-        const buffer: Buffer = typeof value === "string" ? Buffer.from(value, "utf-8") : value;
-        buffers.push(buffer);
+        chunks.push(
+          typeof value === "string" ? readStringAsUint8Array(value) : value
+        );
       });
       readable.once("error", reject);
       readable.once("end", () => {
-        resolve(concat(buffers));
+        resolve(concat(chunks));
       });
       readable.resume();
     }
@@ -398,7 +404,7 @@ class Body {
       return rejected;
     }
     if (this.bodyRepresentation.readable) {
-      return readReadableAsBuffer(
+      return readReadableAsUint8Array(
         await this.createReadableIfRequired()
       );
     }
@@ -448,12 +454,12 @@ class Body {
       throw new Error("Not available");
     }
     if (this.bodyRepresentation.readable) {
-      return readBufferAsArrayBuffer(
-        await readReadableAsBuffer(this.bodyRepresentation.readable)
+      return readUint8ArrayAsArrayBuffer(
+        await readReadableAsUint8Array(this.bodyRepresentation.readable)
       );
     }
     if (this.bodyRepresentation.buffer) {
-      return readBufferAsArrayBuffer(this.bodyRepresentation.buffer);
+      return readUint8ArrayAsArrayBuffer(this.bodyRepresentation.buffer);
     }
     // This should be the case for Node.js
     if (this.bodyRepresentation.arrayBuffer) {
@@ -490,8 +496,8 @@ class Body {
     }
     if (this.bodyRepresentation.readable) {
       return new Blob([
-        readBufferAsArrayBuffer(
-          await readReadableAsBuffer(
+        readUint8ArrayAsArrayBuffer(
+          await readReadableAsUint8Array(
             this.bodyRepresentation.readable
           )
         )
@@ -499,7 +505,7 @@ class Body {
     }
     // I don't think any environment that supports buffer & blob?
     if (this.bodyRepresentation.buffer) {
-      return new Blob([readBufferAsArrayBuffer(this.bodyRepresentation.buffer)]);
+      return new Blob([readUint8ArrayAsArrayBuffer(this.bodyRepresentation.buffer)]);
     }
     if (this.bodyRepresentation.arrayBuffer) {
       return new Blob([this.bodyRepresentation.arrayBuffer]);
@@ -564,10 +570,13 @@ class Body {
 
   private async textNoConsumeCheck(): Promise<string> {
     if (this.bodyRepresentation.readable) {
-      const buffer = await readReadableAsBuffer(
+      const buffer = await readReadableAsUint8Array(
         await this.createReadableIfRequired()
       );
-      return buffer.toString("utf-8");
+      if (globalOrSelf.Buffer && globalOrSelf.Buffer.isBuffer(buffer)) {
+        return (buffer as Buffer).toString("utf-8");
+      }
+      return readUint8ArrayAsText(buffer);
     }
     if (support.buffer && this.bodyRepresentation.buffer) {
       return this.bodyRepresentation.buffer.toString("utf-8");
