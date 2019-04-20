@@ -125,11 +125,25 @@ class ResponseBuilder {
     const fullResponse = responses
       .find((response: PartialResponse) => !response.partial);
 
+    const getBody = async (response: Response): Promise<BodyInit> => {
+      if (response.body) {
+        return response.body;
+      }
+      if (this.disableReadableCheck) {
+        return undefined;
+      }
+      // Read as readable if we can't find using `body`,
+      // if the response doesn't support readable we will get an error,
+      // which we will return
+      return asReadable(response)
+        .catch(() => undefined);
+    };
+
     if (fullResponse) {
       if (fullResponse.bodyUsed) {
         throw new Error("Provided full response but the body was already used");
       }
-      body = fullResponse.body;
+      body = await getBody(fullResponse);
       status = fullResponse.status;
       statusText = fullResponse.statusText;
       partial = false;
@@ -170,17 +184,7 @@ class ResponseBuilder {
         return;
       }
 
-      let currentBody: BodyInit = response.body;
-
-      if (currentBody == undefined && !this.disableReadableCheck) {
-        try {
-          // This will also consume the body! Shouldn't be a problem as this should be the only consumer of the bodies
-          // If we're dealing with partial responses, the body is re-usable either way
-          currentBody = await asReadable(response);
-        } catch (e) {
-          // We will get an error if the body isn't readable
-        }
-      }
+      const currentBody = await getBody(response);
 
       if (currentBody != undefined || typeof currentBody === "string") {
         body = currentBody;
