@@ -258,8 +258,11 @@ function getBody(body: BodyInit): BodyRepresentation {
   return asText();
 }
 
-export function ignoreBodyUsed<T extends { ignoreBodyUsed: () => T }>(body: T): T {
-  return body.ignoreBodyUsed();
+export function ignoreBodyUsed<T extends { ignoreBodyUsed?: () => T }>(body: T): T {
+  if (body.ignoreBodyUsed) {
+    body.ignoreBodyUsed();
+  }
+  return body;
 }
 
 export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayBuffer> })): Promise<Buffer | Uint8Array> {
@@ -281,7 +284,11 @@ export async function asBuffer(body: Body | ({ arrayBuffer: () => Promise<ArrayB
   }
 }
 
-export function asReadable(body: Body | BodyLike): Promise<Readable> {
+export async function asReadable(body: Body | BodyLike | Readable): Promise<Readable> {
+  if ((body as Readable).readable) {
+    // Its readable itself
+    return body as Readable;
+  }
   if ((body as any).readable_DO_NOT_USE_NON_STANDARD) {
     return ((body as any).readable_DO_NOT_USE_NON_STANDARD as Function)();
   }
