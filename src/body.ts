@@ -35,7 +35,9 @@ const support = {
     })(),
   formData: "FormData" in globalOrSelf,
   arrayBuffer: "ArrayBuffer" in globalOrSelf,
-  buffer: "Buffer" in globalOrSelf
+  buffer: "Buffer" in globalOrSelf,
+  textDecoder: "TextDecoder" in globalOrSelf,
+  textEncoder: "TextEncoder" in globalOrSelf
 };
 
 function cloneUint8Array(array: ArrayBufferLike): ArrayBufferLike {
@@ -107,17 +109,19 @@ async function readBlobAsArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
 }
 
 function readStringAsUint8Array(value: string): Uint8Array {
-  const arrayBuffer = readStringAsArrayBuffer(value);
-  return new Uint8Array(arrayBuffer);
+  if (support.buffer) {
+    return globalOrSelf.Buffer.from(value, "utf-8");
+  }
+  if (!support.textEncoder) {
+    throw new Error("No TextEncoder available");
+  }
+  const encoder = new globalOrSelf.TextEncoder("utf-8");
+  return encoder.encode(value);
 }
 
 function readStringAsArrayBuffer(value: string): ArrayBuffer {
-  const arrayBuffer = new ArrayBuffer(value.length);
-  const view = new Uint8Array(arrayBuffer);
-  for (let index = 0; index < value.length; index += 1) {
-    view[index] = value.charCodeAt(index);
-  }
-  return arrayBuffer;
+  const array = readStringAsUint8Array(value);
+  return array.buffer;
 }
 
 function readStringAsFormData(value: string) {
@@ -141,11 +145,14 @@ function readArrayBufferAsText(arrayBuffer: ArrayBuffer): string {
 }
 
 function readUint8ArrayAsText(view: Uint8Array): string {
-  const chars = new Array(view.length);
-  for (let index = 0; index < view.length; index += 1) {
-    chars[index] = String.fromCharCode(view[index]);
+  if (support.buffer) {
+    return globalOrSelf.Buffer.from(view).toString("utf-8");
   }
-  return chars.join("");
+  if (!support.textDecoder) {
+    throw new Error("No TextDecoder available");
+  }
+  const decoder = new globalOrSelf.TextDecoder("utf-8");
+  return decoder.decode(view);
 }
 
 async function readBlobAsText(blob: Blob) {
@@ -171,17 +178,15 @@ async function readReadableAsUint8Array(readable: Readable): Promise<Uint8Array>
       (sum, value) => sum + value.length,
       0
     );
-    const view = new Uint8Array(length);
-    let index = 0;
-    values
-      .forEach(
-        (value) => {
-          for (let thisIndex = 0; thisIndex < value.length; thisIndex += 1, index += 1) {
-            view[index] = value[thisIndex];
-          }
-        }
-      );
-    return view;
+    const result = new Uint8Array(length);
+    values.reduce(
+      (offset, value) => {
+        result.set(value, offset);
+        return offset + value.length;
+      },
+      0
+    );
+    return result;
   };
 
   return new Promise(
