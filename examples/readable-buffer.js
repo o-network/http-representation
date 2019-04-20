@@ -15,7 +15,7 @@ const { Body, ignoreBodyUsed, asBuffer } = require('../dist'),
   console.log({ bufferA });
   const bufferB = await asBuffer(body);
   console.log({ bufferB });
-  console.log(bufferA === bufferB);
+  console.log(bufferA === bufferB, Buffer.isBuffer(bufferA), Buffer.isBuffer(bufferB));
 
 })()
   .then(() => console.log("Complete"))

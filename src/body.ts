@@ -112,8 +112,8 @@ function readStringAsUint8Array(value: string): Uint8Array {
 }
 
 function readStringAsArrayBuffer(value: string): ArrayBuffer {
-  const arrayBuffer = new ArrayBuffer(value.length * 2);
-  const view = new Uint16Array(arrayBuffer);
+  const arrayBuffer = new ArrayBuffer(value.length);
+  const view = new Uint8Array(arrayBuffer);
   for (let index = 0; index < value.length; index += 1) {
     view[index] = value.charCodeAt(index);
   }
