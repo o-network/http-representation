@@ -157,17 +157,38 @@ async function readBlobAsText(blob: Blob) {
   return readArrayBufferAsText(result);
 }
 
-async function readReadableAsBuffer(readable: Readable): Promise<Buffer> {
+async function readReadableAsBuffer(readable: Readable): Promise<Uint8Array> {
+  const concat = (values: Uint8Array[]): Uint8Array => {
+    if (globalOrSelf.Buffer) {
+      return globalOrSelf.Buffer.concat(values);
+    }
+    const length = values.reduce(
+      (sum, value) => sum + value.length,
+      0
+    );
+    const view = new Uint8Array(length);
+    let index = 0;
+    values
+      .forEach(
+        (value) => {
+          for (let thisIndex = 0; thisIndex < value.length; thisIndex += 1, index += 1) {
+            view[index] = value[thisIndex];
+          }
+        }
+      );
+    return view;
+  };
+
   return new Promise(
     (resolve, reject) => {
-      const buffers: Buffer[] = [];
+      const buffers: Uint8Array[] = [];
       readable.on("data", (value: string | Buffer) => {
         const buffer: Buffer = typeof value === "string" ? Buffer.from(value, "utf-8") : value;
         buffers.push(buffer);
       });
       readable.once("error", reject);
       readable.once("end", () => {
-        resolve(Buffer.concat(buffers));
+        resolve(concat(buffers));
       });
       readable.resume();
     }
@@ -182,12 +203,19 @@ function getBody(body: BodyInit): BodyRepresentation {
   if (typeof body === "string") {
     return { text: body };
   }
-  if (body && (body.body || typeof body.body === "string")) {
+  if (!body) {
+    // Falsy? Idk
+    return undefined;
+  }
+  if ((body.body || typeof body.body === "string")) {
     // BodyLike
     return getBody(body.body);
   }
   // Require buffer as we expect readable being only supplied in a Node.js environment
   if (support.buffer && body.readable) {
+    return { readable: body };
+  }
+  if (body.on && body.once && body.resume) {
     return { readable: body };
   }
   if (support.buffer && Buffer.isBuffer(body)) {
