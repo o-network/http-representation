@@ -214,9 +214,13 @@ function getBody(body: BodyInit): BodyRepresentation {
   if (typeof body === "string") {
     return { text: body };
   }
+  function asText() {
+    return { text: Object.prototype.toString.call(body) };
+  }
+
   if (!body) {
     // Falsy? Idk
-    return undefined;
+    return asText();
   }
   if ((body.body || typeof body.body === "string")) {
     // BodyLike
@@ -251,7 +255,7 @@ function getBody(body: BodyInit): BodyRepresentation {
   if (support.arrayBuffer && (ArrayBuffer.prototype.isPrototypeOf(body) || isArrayBufferView(body))) {
     return { arrayBuffer: cloneUint8Array(body) };
   }
-  return { text: Object.prototype.toString.call(body) };
+  return asText();
 }
 
 export function ignoreBodyUsed<T extends { ignoreBodyUsed: () => T }>(body: T): T {
