@@ -37,56 +37,31 @@ export async function createReplayReadable(initial: ReadableLike): Promise<Repla
 
   const chunks: any[] = [];
 
-  let error: Error = undefined;
+  let error: Error = undefined,
+    ended = false;
 
   // Record any chunks that might be needed
   initial.on("data", chunk => chunks.push(chunk));
-  // onEofChunk
-  // tslint:disable-next-line
-  initial.once("end", () => chunks.push(null));
+  initial.once("end", () => {
+    // tslint:disable-next-line
+    chunks.push(null);
+    ended = true;
+  });
   // Pick up on any errors and replay them once they resume
   initial.once("error", value => error = value);
 
   return async (): Promise<Readable> => {
-    const duplex = new streamModule.Duplex({
-      allowHalfOpen: true
-    });
+    const result = new streamModule.PassThrough();
 
-    // Allow pipe
-    duplex._write = (chunk: any) => duplex.push(chunk);
+    // Anything missed
+    chunks.forEach(chunk => result.push(chunk));
 
-    // Allow read
-    duplex._read = () => initial.read(0);
+    if (error) {
+      result.emit();
+    } else if (!ended) {
+      initial.pipe(result);
+    }
 
-    // Replay any _initial_ chunks
-    // If this includes a null chunk, our read will end
-    chunks.forEach(chunk => duplex.push(chunk));
-
-    // Pipe any _new_ data
-    initial.pipe(duplex);
-
-    // Replay the end, because this triggers of the onend process for the duplex
-    // (see https://github.com/nodejs/node/blob/b08a867d6016ccf04783a0f91fdbcc3460daf234/lib/_stream_duplex.js#L64)
-    initial.once("end", () => {
-      duplex.emit("end");
-      // Forcefully stop any new writes
-      duplex._write = () => {};
-      // if end is passed null for a chunk, it wont try and write a final time
-      // tslint:disable-next-line
-      duplex.end(null);
-    });
-
-    // Trigger a resume of that initial
-    duplex.on("resume", () => {
-      if (error) {
-        // Replay the error if we received one from the initial
-        duplex.emit("error", error);
-      } else {
-        // Trigger the initial to resume
-        initial.resume();
-      }
-    });
-
-    return duplex;
+    return result;
   };
 }
